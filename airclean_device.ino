@@ -1,3 +1,11 @@
+#include "DHT.h"
+
+#include <MQ135.h>
+
+#include <LiquidCrystal_I2C.h>
+
+
+
 /*
  * WebSocketClientSocketIO.ino
  *
@@ -17,19 +25,47 @@
 
 #include <Hash.h>
 
+LiquidCrystal_I2C lcd(0x27, 20, 4);
+
 ESP8266WiFiMulti WiFiMulti;
 SocketIOclient socketIO;
 
 #define USE_SERIAL Serial1
 
+#define BUTTON_POWER D2  // 전원 버튼
+#define BUTTON_HU D5     // 가습 버튼
+#define OUT_HU D6
+#define OUT_WIND D7
+#define DHTPIN D8
+#define V_LED D10
+#define DHTTYPE DHT22
+
+
+const int ANALOGPIN = 0;
+
+int Vo = A0;
+float Vo_value = 0;
+
+DHT dht(DHTPIN, DHTTYPE);
+
+int power = 0;
+bool buttonState = false;
+bool buttonState1 = false;
+
+unsigned long previousMillis = 0;
+unsigned long currentMillis;
+
+int level = 0;
+
+
 // 기기 현 상태
-int mode = 1;
-int windSpeed = 1;
-bool uv = true;
+int mode = 0;
+int windSpeed = 0;
+bool uv = false;
 bool humidifier = false;
 bool petier = false;
 String temperature = "30.3";
-int humidity = 30;
+float humidity = 0;
 float pm1_0 = 5;
 float pm2_5 = 5;
 float pm10_0 = 9;
@@ -79,10 +115,14 @@ void socketIOEvent(socketIOmessageType_t type, uint8_t* payload, size_t length) 
           // 모드 변경 코드
 
           // 가습기 변경 코드
-          if(humidityModeValue == 2){
+          if (humidityModeValue == 2) {
             humidifier = true;
-          }if(humidityModeValue == 1){
-            humidifier = false; 
+          }
+          if (humidityModeValue == 1) {
+            humidifier = false;
+          }
+          if (humidityModeValue == 0) {
+            humidifier = false;
           }
         }
       }
@@ -130,7 +170,7 @@ void setup() {
     WiFi.softAPdisconnect(true);
   }
 
-  WiFiMulti.addAP("sharkIoT", "potato1234!");
+  WiFiMulti.addAP("HTH ZFlip3", "56643401hsm");
 
   //WiFi.disconnect();
   while (WiFiMulti.run() != WL_CONNECTED) {
@@ -145,10 +185,155 @@ void setup() {
 
   // event handler
   socketIO.onEvent(socketIOEvent);
+
+
+  lcd.init();
+  lcd.noBacklight();
+
+  lcd.setCursor(0, 1);
+  lcd.print("Dust : ");
+  lcd.setCursor(0, 2);
+  lcd.print("T : ");
+  lcd.setCursor(10, 2);
+  lcd.print("H : ");
+  lcd.setCursor(0, 3);
+  lcd.print("Mode : ");
+  lcd.setCursor(12, 3);
+  lcd.print("Hu : ");
+  lcd.setCursor(8, 2);
+  lcd.print("C");
+  lcd.setCursor(18, 2);
+  lcd.print("%");
+
+  dht.begin();
+  delay(3000);
+
+
+  pinMode(BUTTON_POWER, INPUT_PULLUP);
+  pinMode(BUTTON_HU, INPUT_PULLUP);
+  pinMode(OUT_HU, OUTPUT);
+  pinMode(OUT_WIND, OUTPUT);
+  pinMode(V_LED, OUTPUT);
+  pinMode(Vo, INPUT);
 }
 
 unsigned long messageTimestamp = 0;
 void loop() {
+
+  bool newButtonState = (digitalRead(BUTTON_POWER) == LOW);
+  bool newButtonState1 = (digitalRead(BUTTON_HU) == LOW);
+
+  if (newButtonState != buttonState) {
+    buttonState = newButtonState;
+    if (buttonState) {
+      mode++;
+    }
+  }
+  if (mode == 3) {
+    mode = 0;
+  }
+  if (mode == 1) {
+    lcd.backlight();
+
+    if (humidity < 40) {
+      humidifier = true;
+    } else if (humidity > 60) {
+      humidifier = false;
+    }
+    if (Vo_value >= 100) {
+      windSpeed = 1;
+    } else {
+      windSpeed = 0;
+    }
+  } else if (mode == 2) {
+    lcd.backlight();
+    windSpeed = 1;
+    if (newButtonState1 != buttonState1) {
+      buttonState1 = newButtonState1;
+      if (buttonState1) {
+        humidifier = !humidifier;
+      }
+    }
+  } else if (mode == 0) {
+    lcd.noBacklight();
+    humidifier = false;
+    windSpeed = 0;
+  }
+
+  if (windSpeed == 1) {
+    digitalWrite(OUT_WIND, HIGH);
+  }
+  if (windSpeed == 0) {
+    digitalWrite(OUT_WIND, LOW);
+  }
+
+  if (humidifier == true) {
+    digitalWrite(OUT_HU, HIGH);
+  }
+  if (humidifier == false) {
+    digitalWrite(OUT_HU, LOW);
+  }
+
+  if (Vo_value >= 0 && Vo_value <= 50) {
+    level = 1;
+  }
+  if (Vo_value >= 50 && Vo_value <= 100) {
+    level = 2;
+  }
+  if (Vo_value >= 100) {
+    level = 3;
+  }
+  pm10_0 = level;
+
+
+  lcd.setCursor(7, 3);
+  if (mode == 0) {
+    lcd.print("off ");
+  }
+  if (mode == 1) {
+    lcd.print("auto");
+  }
+  if (mode == 2) {
+    lcd.print("free");
+  }
+
+  lcd.setCursor(17, 3);
+  if (humidifier == false) {
+    lcd.print("off");
+  }
+  if (humidifier == true) {
+    lcd.print("on ");
+  }
+
+  currentMillis = millis();
+  if (currentMillis - previousMillis >= 3000) {
+    previousMillis = currentMillis;
+
+    humidity = dht.readHumidity();
+    temperature = dht.readTemperature();
+    lcd.setCursor(4, 2);
+    lcd.print(temperature);  //온도
+    lcd.setCursor(14, 2);
+    lcd.print(humidity);  //습도
+
+    digitalWrite(V_LED, LOW);
+
+    Vo_value = analogRead(Vo);
+
+    digitalWrite(V_LED, HIGH);
+    if (Vo_value >= 100) {
+      lcd.setCursor(7, 1);
+      lcd.print(Vo_value);
+    } else {
+      lcd.setCursor(7, 1);
+      lcd.print(" ");
+      lcd.setCursor(8, 1);
+      lcd.print(Vo_value);
+    }
+    lcd.setCursor(14, 1);
+    lcd.print("ug/m3");
+  }
+
   socketIO.loop();
 
   uint64_t now = millis();
@@ -185,6 +370,7 @@ void loop() {
     param1["dust"] = param2;
     // param1["debug"] = debug;
     // param1["debug2"] = debug2;
+
 
 
     // JSON을 문자열로(직렬화)
