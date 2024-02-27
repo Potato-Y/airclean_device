@@ -1,4 +1,4 @@
-# 에어깨긋해
+# 에어깨끗해
 🏫 본 프로젝트는 `전주대학교` `정보통신공학과` `캡스톤디자인` 프로젝트입니다.
 
 |이름|담당|Github|
@@ -17,7 +17,7 @@
 
 ## 사용 기술 스택
 <img src="https://img.shields.io/badge/arduino-00878F?style=for-the-badge&logo=arduino&logoColor=white">
-<img src="https://img.shields.io/badge/socketdot.io-010101?style=for-the-badge&logo=socketdotio&logoColor=white">
+<img src="https://img.shields.io/badge/socket.io-010101?style=for-the-badge&logo=socketdotio&logoColor=white">
 
 ## 주요 기능
 - 공기질 실시간 모니터링
